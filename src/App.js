@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 
 const WEBHOOK_URL = "http://localhost:5678/webhook/price-compare";
 
@@ -83,7 +83,29 @@ const styles = `
   .skeleton-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
   .skeleton-line { height: 12px; border-radius: 6px; background: rgba(255,255,255,0.06); animation: shimmer 1.4s ease-in-out infinite; }
   .skeleton-line.short{width:40%} .skeleton-line.medium{width:70%}
-  @keyframes shimmer { 0%,100%{opacity:.4} 50%{opacity:.8} }
+  /* login */
+  .login-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(12px); z-index: 100; display: flex; align-items: center; justify-content: center; animation: fadeIn .3s ease; }
+  .login-modal { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 32px; padding: 48px; width: 100%; max-width: 440px; box-shadow: 0 40px 100px rgba(0,0,0,0.5); position: relative; }
+  .login-close { position: absolute; top: 24px; right: 24px; background: none; border: none; color: rgba(255,255,255,0.3); cursor: pointer; font-size: 20px; }
+  .login-title { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; color: #fff; margin-bottom: 8px; text-align: center; }
+  .login-subtitle { font-size: 14px; color: rgba(255,255,255,0.4); text-align: center; margin-bottom: 32px; }
+  .login-form { display: flex; flex-direction: column; gap: 16px; }
+  .login-input-group { display: flex; flex-direction: column; gap: 8px; }
+  .login-input-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: rgba(255,255,255,0.3); }
+  .login-input { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 14px 16px; color: #fff; font-family: inherit; outline: none; transition: border-color .2s; }
+  .login-input:focus { border-color: #ff5a1f; }
+  .login-submit { background: #ff5a1f; color: #fff; border: none; border-radius: 12px; padding: 16px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; cursor: pointer; transition: transform .2s, background .2s; margin-top: 8px; }
+  .login-submit:hover { background: #e84d13; transform: translateY(-2px); }
+  .user-menu { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 6px 6px 6px 14px; border-radius: 100px; position: absolute; top: 40px; right: 40px; z-index: 10; transition: all .2s; }
+  .user-menu:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2); }
+  .user-name { font-size: 13px; font-weight: 600; color: #f0ede8; }
+  .user-avatar { width: 32px; height: 32px; background: #ff5a1f; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px; }
+  .logout-btn { background: none; border: none; color: rgba(255,60,60,0.6); font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; padding: 0 8px; transition: color .2s; }
+  .logout-btn:hover { color: #ff3c3c; }
+
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+  @keyframes slideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+
 
   /* error */
   .error-banner { margin-top: 40px; background: rgba(255,60,60,0.08); border: 1px solid rgba(255,60,60,0.2); border-radius: 14px; padding: 20px 24px; text-align: center; }
@@ -161,6 +183,55 @@ function StarRating({ rating }) {
   return <div className="card-rating">{stars} <span>({rating})</span></div>;
 }
 
+function LoginModal({ isOpen, onClose, onLogin }) {
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!email || !name) return;
+    onLogin({ name, email });
+    onClose();
+  };
+
+  return (
+    <div className="login-overlay" onClick={onClose}>
+      <div className="login-modal" onClick={e => e.stopPropagation()} style={{animation: 'slideUp .4s ease'}}>
+        <button className="login-close" onClick={onClose}>&times;</button>
+        <h2 className="login-title">Welcome Back</h2>
+        <p className="login-subtitle">Sign in to track prices and save your wishlist.</p>
+        <form className="login-form" onSubmit={handleSubmit}>
+          <div className="login-input-group">
+            <label className="login-input-label">Full Name</label>
+            <input 
+              type="text" 
+              className="login-input" 
+              placeholder="Enter your name" 
+              value={name}
+              onChange={e => setName(e.target.value)}
+              required 
+            />
+          </div>
+          <div className="login-input-group">
+            <label className="login-input-label">Email Address</label>
+            <input 
+              type="email" 
+              className="login-input" 
+              placeholder="name@example.com" 
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required 
+            />
+          </div>
+          <button type="submit" className="login-submit">Continue</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* ── main component ──────────────────────────────────────────────────── */
 export default function App() {
   const [query, setQuery]           = useState("");
@@ -168,6 +239,25 @@ export default function App() {
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState("");
   const [searched, setSearched]     = useState(false);
+  
+  const [showLogin, setShowLogin]   = useState(false);
+  const [user, setUser]             = useState(null);
+
+  // Load user from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("buywise_user");
+    if (saved) setUser(JSON.parse(saved));
+  }, []);
+
+  const handleLogin = (userData) => {
+    setUser(userData);
+    localStorage.setItem("buywise_user", JSON.stringify(userData));
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem("buywise_user");
+  };
 
   // filters (applied client-side, instant)
   const [selectedSellers, setSelectedSellers] = useState([]);
@@ -285,6 +375,19 @@ export default function App() {
         <div className="bg-glow" />
         <div className="bg-grid" />
         <div className="container">
+
+          {/* ── User Profile / Login ── */}
+          {user ? (
+            <div className="user-menu">
+              <span className="user-name">{user.name.split(' ')[0]}</span>
+              <div className="user-avatar">{user.name.charAt(0)}</div>
+              <button className="logout-btn" onClick={handleLogout}>Logout</button>
+            </div>
+          ) : (
+            <button className="search-btn" style={{position:'absolute', top:'40px', right:'40px', padding:'10px 20px'}} onClick={() => setShowLogin(true)}>
+              Sign In
+            </button>
+          )}
 
           {/* ── Header ── */}
           <header className="header">
@@ -476,6 +579,11 @@ export default function App() {
 
         </div>
       </div>
+      <LoginModal 
+        isOpen={showLogin} 
+        onClose={() => setShowLogin(false)} 
+        onLogin={handleLogin} 
+      />
     </>
   );
 }
