@@ -1,0 +1,4 @@
+Now I know the truth. Google Shopping India returns sellers like Bear Hugs, GameLoot, Gadgets Now, Imagine Apple Premium Reseller — NOT Amazon/Flipkart. The hardcoded store filter buttons are useless for this API.
+
+
+The fix: Replace hardcoded store buttons with dynamic seller buttons generated from the actual search results:

@@ -1,0 +1,181 @@
+{
+  "name": "BuyWise Price Comparator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "price-compare",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "node-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ],
+      "webhookId": "buywise-price-compare"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.searchapi.io/api/v1/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "engine",
+              "value": "google_shopping"
+            },
+            {
+              "name": "q",
+              "value": "={{ $json.body.query || $json.query }}"
+            },
+            {
+              "name": "gl",
+              "value": "in"
+            },
+            {
+              "name": "hl",
+              "value": "en"
+            },
+            {
+              "name": "num",
+              "value": "30"
+            },
+            {
+              "name": "api_key",
+              "value": "LYGXtm4kBHKeNXJakbVD2dZd"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "node-serp",
+      "name": "SearchAPI Google Shopping",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Accessory keywords to block\nconst BLOCK = [\n  'case', 'cover', 'charger', 'cable', 'adapter',\n  'screen guard', 'tempered glass', 'protector',\n  'stand', 'holder', 'mount', 'skin', 'sticker',\n  'pouch', 'sleeve', 'earphone', 'headphone',\n  'airpods', 'earbud', 'lanyard', 'power bank',\n  'memory card', 'back cover', 'bumper', 'folio',\n  'popsocket', 'privacy screen', 'ring light'\n];\n\nfunction isAccessory(title) {\n  return BLOCK.some(kw => title.toLowerCase().includes(kw));\n}\n\nfunction parsePrice(v) {\n  return parseFloat(String(v || 0).replace(/[^0-9.]/g, '')) || 0;\n}\n\n// Get shopping results from SearchAPI\nconst serpBody = $input.first().json;\nconst rows     = serpBody.shopping_results || [];\n\nif (rows.length === 0) {\n  return [{ json: { data: [], debug: { keys: Object.keys(serpBody), error: serpBody.error } } }];\n}\n\nconst results = [];\n\nfor (const r of rows) {\n  const title  = (r.title || '').trim();\n  const price  = r.extracted_price || parsePrice(r.price);\n  const source = r.seller || r.source || 'Online Store';\n\n  if (!price || !title) continue;\n  if (isAccessory(title)) continue;\n\n  results.push({\n    title,\n    price,\n    priceFmt: '\\u20b9' + price.toLocaleString('en-IN'),\n    currency:  r.currency || 'INR',\n    source:    source,\n    link:      r.product_link || r.link || r.offers_link || '',\n    image:     r.thumbnail || '',\n    rating:    r.rating  || null,\n    reviews:   r.reviews || null,\n    delivery:  r.delivery_return || r.delivery || '',\n  });\n}\n\n// Sort by price ascending (default)\nresults.sort((a, b) => a.price - b.price);\n\n// Deduplicate\nconst seen = new Set();\nconst deduped = results.filter(r => {\n  const key = `${r.source}||${r.title.slice(0, 40)}`;\n  if (seen.has(key)) return false;\n  seen.add(key);\n  return true;\n});\n\nconst best = deduped[0]?.price || 0;\nconst data = deduped.map((r, i) => ({\n  ...r,\n  badge:  i === 0 ? 'Best Price' : `#${i + 1}`,\n  saving: i === 0 ? 0 : Math.abs(r.price - best),\n}));\n\nreturn [{ json: { data } }];"
+      },
+      "id": "node-filter",
+      "name": "Filter & Sort Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "node-respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        860,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "SearchAPI Google Shopping",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SearchAPI Google Shopping": {
+      "main": [
+        [
+          {
+            "node": "Filter & Sort Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter & Sort Results": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "10",
+  "meta": {
+    "instanceId": "buywise-price-comparator"
+  },
+  "tags": [
+    {
+      "name": "BuyWise",
+      "id": "1"
+    },
+    {
+      "name": "Price Comparison",
+      "id": "2"
+    }
+  ]
+}
